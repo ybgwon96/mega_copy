@@ -54,10 +54,11 @@ export default function ProductManagementMobile() {
     try {
       const { supabase } = await import('../../lib/supabase');
       
-      // 상품 데이터 가져오기
+      // 상품 데이터 가져오기 (soft delete된 상품 제외)
       const { data: products, error } = await supabase
         .from('products')
         .select('*')
+        .eq('is_active', true)
         .order('created_at', { ascending: false })
         .limit(1000);
       
@@ -144,26 +145,19 @@ export default function ProductManagementMobile() {
     }
   };
 
-  // 단일 삭제 - Supabase 직접 호출
+  // 단일 삭제 - soft delete (is_active = false)
   const handleSingleDelete = async (productId: string) => {
     if (!confirm('이 상품을 삭제하시겠습니까?')) return;
-    
+
     setIsLoading(true);
     try {
       const { supabase } = await import('../../lib/supabase');
-      
-      // 상품 이미지 먼저 삭제
-      await supabase
-        .from('product_images')
-        .delete()
-        .eq('product_id', productId);
-      
-      // 상품 삭제
+
       const { error } = await supabase
         .from('products')
-        .delete()
+        .update({ is_active: false, updated_at: new Date().toISOString() })
         .eq('id', productId);
-      
+
       if (!error) {
         setProducts(prev => prev.filter(p => p.id !== productId));
         setSelectedProducts(prev => prev.filter(id => id !== productId));
@@ -177,28 +171,21 @@ export default function ProductManagementMobile() {
     }
   };
 
-  // 일괄 삭제 - Supabase 직접 호출
+  // 일괄 삭제 - soft delete (is_active = false)
   const handleBulkDelete = async () => {
     if (!confirm(`선택한 ${selectedProducts.length}개 상품을 삭제하시겠습니까?`)) return;
-    
+
     setIsLoading(true);
     try {
       const { supabase } = await import('../../lib/supabase');
-      
-      for (const id of selectedProducts) {
-        // 상품 이미지 삭제
-        await supabase
-          .from('product_images')
-          .delete()
-          .eq('product_id', id);
-        
-        // 상품 삭제
-        await supabase
-          .from('products')
-          .delete()
-          .eq('id', id);
-      }
-      
+
+      const { error } = await supabase
+        .from('products')
+        .update({ is_active: false, updated_at: new Date().toISOString() })
+        .in('id', selectedProducts);
+
+      if (error) throw error;
+
       setProducts(prev => prev.filter(p => !selectedProducts.includes(p.id)));
       setSelectedProducts([]);
       setShowBulkActions(false);
