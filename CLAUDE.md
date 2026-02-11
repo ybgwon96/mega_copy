@@ -45,6 +45,19 @@ lib/              공통 유틸리티 (@/ alias로 import)
 4개 테이블: `products`, `product_images` (display_order로 정렬), `notices`, `admins`
 타입 정의는 `lib/supabase.ts`의 `Database` 타입 참조.
 
+### 상품 삭제 정책 (Soft Delete)
+
+상품은 **절대 물리적 삭제(hard delete)하지 않는다.** `is_active = false`로 비활성화(soft delete)만 허용.
+
+**4중 보호 구조:**
+1. **RLS 정책** — `products` 테이블에 DELETE 권한 없음 (anon/authenticated 모두)
+2. **DB 트리거 `prevent_product_hard_delete`** — SQL 직접 DELETE도 차단
+3. **DB 트리거 `check_mass_soft_delete`** — 한 번에 20개 초과 soft delete 차단
+4. **코드** — `ProductManagementMobile.tsx`에서 `.update({ is_active: false })`만 사용
+
+상품 조회 시 반드시 `.eq('is_active', true)` 필터를 포함할 것.
+hard delete가 필요한 경우 DB 트리거를 일시적으로 비활성화해야 함 (DBA 작업).
+
 ### 이미지 처리 파이프라인
 WebWorker 기반 적응형 압축 → upload-queue를 통한 병렬 업로드 (3개 동시) → Supabase Storage 저장. 상품당 최대 20장.
 
@@ -78,3 +91,23 @@ Conventional Commits (`feat:`, `fix:`, `docs:`) · 제목은 명령형 · 72자 
 ## 커스텀 색상 (Tailwind)
 
 `mega-yellow` (#FFD700), `mega-black`, `mega-red` — `tailwind.config.js`에 정의
+
+## Supabase RLS 정책 현황
+
+### products
+| 권한 | 정책 | 조건 |
+|------|------|------|
+| SELECT | Anyone can read active products | `is_active = true` |
+| INSERT | Anyone can insert products / Auth users can insert | `true` |
+| UPDATE | Anyone can update products / Auth users can update | `true` |
+| DELETE | **없음 (차단됨)** | — |
+
+### product_images
+| 권한 | 정책 | 대상 |
+|------|------|------|
+| SELECT | Anyone can view images | public |
+| INSERT | Auth users can add images | authenticated |
+| UPDATE | Auth users can modify images | authenticated |
+| DELETE | Auth users can remove images | authenticated |
+
+**주의:** 관리자 페이지는 Supabase anon key를 사용하므로 authenticated 전용 정책은 관리자 페이지에서 동작하지 않음. 향후 Supabase Auth 통합 권장.
