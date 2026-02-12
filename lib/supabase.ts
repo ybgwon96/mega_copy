@@ -26,6 +26,7 @@ export type Database = {
           category: string;
           description: string | null;
           stock: number;
+          is_active: boolean;
           created_at: string;
           updated_at: string;
         };
@@ -37,6 +38,7 @@ export type Database = {
           category: string;
           description?: string | null;
           stock?: number;
+          is_active?: boolean;
           created_at?: string;
           updated_at?: string;
         };
@@ -48,6 +50,7 @@ export type Database = {
           category?: string;
           description?: string | null;
           stock?: number;
+          is_active?: boolean;
           created_at?: string;
           updated_at?: string;
         };

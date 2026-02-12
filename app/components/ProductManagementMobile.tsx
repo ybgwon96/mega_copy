@@ -164,8 +164,9 @@ export default function ProductManagementMobile() {
       } else {
         throw error;
       }
-    } catch (error) {
-      alert('삭제 중 오류가 발생했습니다.');
+    } catch (error: any) {
+      console.error('상품 삭제 오류:', error);
+      alert(`삭제 중 오류가 발생했습니다: ${error?.message || '알 수 없는 오류'}`);
     } finally {
       setIsLoading(false);
     }
@@ -173,6 +174,10 @@ export default function ProductManagementMobile() {
 
   // 일괄 삭제 - soft delete (is_active = false)
   const handleBulkDelete = async () => {
+    if (selectedProducts.length > 20) {
+      alert('한 번에 20개까지만 삭제할 수 있습니다. 선택을 줄여주세요.');
+      return;
+    }
     if (!confirm(`선택한 ${selectedProducts.length}개 상품을 삭제하시겠습니까?`)) return;
 
     setIsLoading(true);
@@ -189,8 +194,9 @@ export default function ProductManagementMobile() {
       setProducts(prev => prev.filter(p => !selectedProducts.includes(p.id)));
       setSelectedProducts([]);
       setShowBulkActions(false);
-    } catch (error) {
-      alert('삭제 중 오류가 발생했습니다.');
+    } catch (error: any) {
+      console.error('일괄 삭제 오류:', error);
+      alert(`삭제 중 오류가 발생했습니다: ${error?.message || '알 수 없는 오류'}`);
     } finally {
       setIsLoading(false);
     }

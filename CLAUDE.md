@@ -106,7 +106,7 @@ Conventional Commits (`feat:`, `fix:`, `docs:`) · 제목은 명령형 · 72자 
 | 권한 | 정책 | 대상 |
 |------|------|------|
 | SELECT | Anyone can view images | public |
-| INSERT | Auth users can add images | authenticated |
+| INSERT | Anyone can insert images / Auth users can add images | public / authenticated |
 | UPDATE | Auth users can modify images | authenticated |
 | DELETE | Auth users can remove images | authenticated |
 
