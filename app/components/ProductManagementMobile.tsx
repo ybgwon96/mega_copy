@@ -145,7 +145,7 @@ export default function ProductManagementMobile() {
     }
   };
 
-  // 단일 삭제 - soft delete (is_active = false)
+  // 단일 삭제 - soft delete (RPC 함수 사용)
   const handleSingleDelete = async (productId: string) => {
     if (!confirm('이 상품을 삭제하시겠습니까?')) return;
 
@@ -153,17 +153,15 @@ export default function ProductManagementMobile() {
     try {
       const { supabase } = await import('../../lib/supabase');
 
-      const { error } = await supabase
-        .from('products')
-        .update({ is_active: false, updated_at: new Date().toISOString() })
-        .eq('id', productId);
+      const { data, error } = await supabase.rpc('soft_delete_products', {
+        product_ids: [productId]
+      });
 
-      if (!error) {
-        setProducts(prev => prev.filter(p => p.id !== productId));
-        setSelectedProducts(prev => prev.filter(id => id !== productId));
-      } else {
-        throw error;
-      }
+      if (error) throw error;
+      if (!data?.success) throw new Error(data?.error || '삭제 실패');
+
+      setProducts(prev => prev.filter(p => p.id !== productId));
+      setSelectedProducts(prev => prev.filter(id => id !== productId));
     } catch (error: any) {
       console.error('상품 삭제 오류:', error);
       alert(`삭제 중 오류가 발생했습니다: ${error?.message || '알 수 없는 오류'}`);
@@ -172,7 +170,7 @@ export default function ProductManagementMobile() {
     }
   };
 
-  // 일괄 삭제 - soft delete (is_active = false)
+  // 일괄 삭제 - soft delete (RPC 함수 사용)
   const handleBulkDelete = async () => {
     if (selectedProducts.length > 20) {
       alert('한 번에 20개까지만 삭제할 수 있습니다. 선택을 줄여주세요.');
@@ -184,12 +182,12 @@ export default function ProductManagementMobile() {
     try {
       const { supabase } = await import('../../lib/supabase');
 
-      const { error } = await supabase
-        .from('products')
-        .update({ is_active: false, updated_at: new Date().toISOString() })
-        .in('id', selectedProducts);
+      const { data, error } = await supabase.rpc('soft_delete_products', {
+        product_ids: selectedProducts
+      });
 
       if (error) throw error;
+      if (!data?.success) throw new Error(data?.error || '삭제 실패');
 
       setProducts(prev => prev.filter(p => !selectedProducts.includes(p.id)));
       setSelectedProducts([]);

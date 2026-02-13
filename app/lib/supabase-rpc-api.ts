@@ -77,14 +77,12 @@ export const productsAPI = {
   },
 
   async delete(id: string) {
-    const { data, error } = await supabase
-      .from('products')
-      .update({ is_active: false })
-      .eq('id', id)
-      .select()
-      .single()
+    const { data, error } = await supabase.rpc('soft_delete_products', {
+      product_ids: [id]
+    })
 
     if (error) throw error
+    if (!data?.success) throw new Error(data?.error || '삭제 실패')
     return data
   },
 
