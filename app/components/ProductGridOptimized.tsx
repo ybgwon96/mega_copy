@@ -108,7 +108,7 @@ export default function ProductGridOptimized({ category, searchTerm = '' }: Prod
   const fetchProducts = useCallback(async () => {
     try {
       console.log('[ProductGrid] Fetching products...');
-      const result = await productsAPI.getAll({ limit: 1000 });
+      const result = await productsAPI.getAll({ limit: 5000 });
       
       console.log('[ProductGrid] API Response:', result);
       console.log('[ProductGrid] Response success:', result.success);
