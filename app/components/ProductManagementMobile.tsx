@@ -55,12 +55,33 @@ export default function ProductManagementMobile() {
       const { supabase } = await import('../../lib/supabase');
       
       // 상품 데이터 가져오기 (soft delete된 상품 제외)
-      const { data: products, error } = await supabase
-        .from('products')
-        .select('*')
-        .eq('is_active', true)
-        .order('created_at', { ascending: false })
-        .limit(5000);
+      // Supabase API 기본 max rows가 1000이므로 페이지네이션으로 전체 조회
+      const PAGE_SIZE = 1000;
+      let allProducts: any[] = [];
+      let from = 0;
+      let hasMore = true;
+
+      while (hasMore) {
+        const { data, error: fetchError } = await supabase
+          .from('products')
+          .select('*')
+          .eq('is_active', true)
+          .order('created_at', { ascending: false })
+          .range(from, from + PAGE_SIZE - 1);
+
+        if (fetchError) throw fetchError;
+
+        if (data && data.length > 0) {
+          allProducts = allProducts.concat(data);
+          from += PAGE_SIZE;
+          hasMore = data.length === PAGE_SIZE;
+        } else {
+          hasMore = false;
+        }
+      }
+
+      const products = allProducts;
+      const error = null;
       
       if (error) throw error;
       
