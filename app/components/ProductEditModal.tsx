@@ -21,7 +21,7 @@ interface Product {
 interface ProductEditModalProps {
   product: Product;
   onClose: () => void;
-  onSave: () => void;
+  onSave: (updatedProduct?: any) => void;
 }
 
 const categories = [
@@ -140,7 +140,27 @@ export default function ProductEditModal({ product, onClose, onSave }: ProductEd
       }
 
       alert('상품이 성공적으로 수정되었습니다!');
-      onSave();
+
+      // 낙관적 업데이트를 위해 수정된 상품 데이터 전달
+      const allImages = [
+        ...existingImages,
+        ...uploadedImageUrls.map((url, i) => ({
+          id: `new-${i}`,
+          image_url: url,
+          display_order: existingImages.length + i + 1
+        }))
+      ];
+      const updatedProduct = {
+        ...product,
+        name: formData.name,
+        price: formData.price,
+        category: formData.category,
+        description: formData.description,
+        image_url: mainImageUrl,
+        product_images: allImages,
+        additional_images: allImages.map(img => img.image_url)
+      };
+      onSave(updatedProduct);
     } catch (error) {
       console.error('Error updating product:', error);
       alert('상품 수정 중 오류가 발생했습니다.');

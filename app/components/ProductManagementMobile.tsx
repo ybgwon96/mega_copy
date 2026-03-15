@@ -48,14 +48,13 @@ export default function ProductManagementMobile() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const itemsPerPage = 20;
 
-  // 상품 목록 불러오기 - Supabase 직접 호출
+  // 상품 목록 불러오기 - Supabase 직접 호출 (JOIN으로 이미지 함께 조회)
   const fetchProducts = async () => {
     setIsLoading(true);
     try {
       const { supabase } = await import('../../lib/supabase');
-      
-      // 상품 데이터 가져오기 (soft delete된 상품 제외)
-      // Supabase API 기본 max rows가 1000이므로 페이지네이션으로 전체 조회
+
+      // 상품 + 이미지를 JOIN으로 한 번에 조회 (N+1 쿼리 제거)
       const PAGE_SIZE = 1000;
       let allProducts: any[] = [];
       let from = 0;
@@ -64,7 +63,7 @@ export default function ProductManagementMobile() {
       while (hasMore) {
         const { data, error: fetchError } = await supabase
           .from('products')
-          .select('*')
+          .select('*, product_images(*)')
           .eq('is_active', true)
           .order('created_at', { ascending: false })
           .range(from, from + PAGE_SIZE - 1);
@@ -80,29 +79,16 @@ export default function ProductManagementMobile() {
         }
       }
 
-      const products = allProducts;
-      const error = null;
-      
-      if (error) throw error;
-      
-      if (products) {
-        // 상품 이미지 가져오기
-        const productsWithImages = await Promise.all(
-          products.map(async (product) => {
-            const { data: images } = await supabase
-              .from('product_images')
-              .select('*')
-              .eq('product_id', product.id)
-              .order('display_order');
-            
-            return {
-              ...product,
-              product_images: images || [],
-              additional_images: images?.map(img => img.image_url) || []
-            };
-          })
-        );
-        
+      if (allProducts.length > 0) {
+        const productsWithImages = allProducts.map(product => ({
+          ...product,
+          product_images: (product.product_images || [])
+            .sort((a: any, b: any) => a.display_order - b.display_order),
+          additional_images: (product.product_images || [])
+            .sort((a: any, b: any) => a.display_order - b.display_order)
+            .map((img: any) => img.image_url)
+        }));
+
         setProducts(productsWithImages);
         setFilteredProducts(productsWithImages);
       } else {
@@ -509,9 +495,11 @@ export default function ProductManagementMobile() {
       {showProductModal && (
         <ProductAddModal
           onClose={() => setShowProductModal(false)}
-          onSave={() => {
+          onSave={(newProduct?: any) => {
             setShowProductModal(false);
-            fetchProducts();
+            if (newProduct) {
+              setProducts(prev => [newProduct, ...prev]);
+            }
           }}
         />
       )}
@@ -524,10 +512,12 @@ export default function ProductManagementMobile() {
             setShowEditModal(false);
             setEditingProduct(null);
           }}
-          onSave={() => {
+          onSave={(updatedProduct?: any) => {
             setShowEditModal(false);
             setEditingProduct(null);
-            fetchProducts();
+            if (updatedProduct) {
+              setProducts(prev => prev.map(p => p.id === updatedProduct.id ? updatedProduct : p));
+            }
           }}
         />
       )}

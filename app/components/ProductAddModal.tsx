@@ -9,7 +9,7 @@ import { supabase } from '../../lib/supabase';
 
 interface ProductAddModalProps {
   onClose: () => void;
-  onSave: () => void;
+  onSave: (newProduct?: any) => void;
 }
 
 const categories = [
@@ -396,7 +396,19 @@ export default function ProductAddModal({ onClose, onSave }: ProductAddModalProp
       }
 
       alert('상품이 성공적으로 등록되었습니다!');
-      onSave();
+
+      // 낙관적 업데이트를 위해 새 상품 데이터 전달
+      const allImageUrls = [mainImageUrl, ...detailImageUrls];
+      const productWithImages = {
+        ...newProduct,
+        product_images: allImageUrls.map((url, i) => ({
+          id: `temp-${i}`,
+          image_url: url,
+          display_order: i
+        })),
+        additional_images: allImageUrls
+      };
+      onSave(productWithImages);
     } catch (error: any) {
       console.error('상품 등록 오류:', error);
       alert(error.message || '상품 등록 중 오류가 발생했습니다.');

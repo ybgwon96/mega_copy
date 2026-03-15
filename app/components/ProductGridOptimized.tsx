@@ -79,6 +79,8 @@ export default function ProductGridOptimized({ category, searchTerm = '' }: Prod
   const [isLoading, setIsLoading] = useState(true);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
   const [hasMore, setHasMore] = useState(true);
+  const [serverHasMore, setServerHasMore] = useState(true);
+  const BATCH_SIZE = 100;
 
   // 페이지 상태 복원 - sessionStorage에서 저장된 값 읽기
   const getStorageKey = () => `product-grid-page:${category}:${searchTerm}`;
@@ -104,35 +106,37 @@ export default function ProductGridOptimized({ category, searchTerm = '' }: Prod
   const prevSearchTermRef = useRef(searchTerm);
   const isNavigatingBack = useRef(false);
 
-  // 상품 데이터 가져오기
-  const fetchProducts = useCallback(async () => {
+  // 상품 데이터 가져오기 (서버 페이지네이션)
+  const fetchProducts = useCallback(async (offset = 0, append = false) => {
     try {
-      console.log('[ProductGrid] Fetching products...');
-      const result = await productsAPI.getAll({ limit: 5000 });
-      
-      console.log('[ProductGrid] API Response:', result);
-      console.log('[ProductGrid] Response success:', result.success);
-      console.log('[ProductGrid] Response data:', result.data);
-      console.log('[ProductGrid] Data length:', result.data?.length);
-      
+      console.log(`[ProductGrid] Fetching products (offset: ${offset}, limit: ${BATCH_SIZE})...`);
+      const result = await productsAPI.getAll({ limit: BATCH_SIZE, offset });
+
       if (result.data) {
-        const allProducts = Array.isArray(result.data) ? result.data : [];
-        console.log('[ProductGrid] Products array:', allProducts);
+        const newProducts = Array.isArray(result.data) ? result.data : [];
         // 최신순 정렬
-        const sortedProducts = allProducts.sort((a: Product, b: Product) => {
+        const sortedNew = newProducts.sort((a: Product, b: Product) => {
           const dateA = new Date(a.created_at).getTime();
           const dateB = new Date(b.created_at).getTime();
           return dateB - dateA;
         });
-        setProducts(sortedProducts);
-        console.log('[ProductGrid] Set products:', sortedProducts.length);
+
+        if (append) {
+          setProducts(prev => [...prev, ...sortedNew]);
+        } else {
+          setProducts(sortedNew);
+        }
+
+        setServerHasMore(newProducts.length === BATCH_SIZE);
+        console.log(`[ProductGrid] Loaded ${newProducts.length} products (total offset: ${offset})`);
       } else {
-        console.log('[ProductGrid] No data in response');
-        setProducts([]);
+        if (!append) setProducts([]);
+        setServerHasMore(false);
       }
     } catch (error) {
       console.error('[ProductGrid] Failed to fetch products:', error);
-      setProducts([]);
+      if (!append) setProducts([]);
+      setServerHasMore(false);
     } finally {
       setIsLoading(false);
     }
@@ -172,16 +176,26 @@ export default function ProductGridOptimized({ category, searchTerm = '' }: Prod
     }
   }, [products, category, searchTerm, page]);
 
-  // 더 많은 아이템 로드
+  // 더 많은 아이템 로드 (클라이언트 페이지 증가 + 필요 시 서버에서 추가 fetch)
   const loadMore = useCallback(() => {
     if (!isLoadingMore && hasMore) {
       setIsLoadingMore(true);
-      setTimeout(() => {
-        setPage(prev => prev + 1);
+
+      const nextPage = page + 1;
+      const nextEndIndex = nextPage * itemsPerPage;
+
+      // 현재 로드된 상품 수보다 더 많이 필요하고, 서버에 더 있으면 추가 fetch
+      if (nextEndIndex >= products.length && serverHasMore) {
+        fetchProducts(products.length, true).then(() => {
+          setPage(nextPage);
+          setIsLoadingMore(false);
+        });
+      } else {
+        setPage(nextPage);
         setIsLoadingMore(false);
-      }, 500);
+      }
     }
-  }, [isLoadingMore, hasMore]);
+  }, [isLoadingMore, hasMore, page, products.length, serverHasMore, fetchProducts]);
 
   // Intersection Observer 설정
   useEffect(() => {
