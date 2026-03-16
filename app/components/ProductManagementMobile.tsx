@@ -54,7 +54,7 @@ export default function ProductManagementMobile() {
     try {
       const { supabase } = await import('../../lib/supabase');
 
-      // 상품 + 이미지를 JOIN으로 한 번에 조회 (N+1 쿼리 제거)
+      // 상품 조회 (페이지네이션으로 1000행 제한 우회)
       const PAGE_SIZE = 1000;
       let allProducts: any[] = [];
       let from = 0;
@@ -63,7 +63,7 @@ export default function ProductManagementMobile() {
       while (hasMore) {
         const { data, error: fetchError } = await supabase
           .from('products')
-          .select('*, product_images(*)')
+          .select('*')
           .eq('is_active', true)
           .order('created_at', { ascending: false })
           .range(from, from + PAGE_SIZE - 1);
@@ -80,14 +80,29 @@ export default function ProductManagementMobile() {
       }
 
       if (allProducts.length > 0) {
-        const productsWithImages = allProducts.map(product => ({
-          ...product,
-          product_images: (product.product_images || [])
-            .sort((a: any, b: any) => a.display_order - b.display_order),
-          additional_images: (product.product_images || [])
-            .sort((a: any, b: any) => a.display_order - b.display_order)
-            .map((img: any) => img.image_url)
-        }));
+        // 이미지를 한 번의 쿼리로 일괄 조회 (N+1 방지)
+        const productIds = allProducts.map(p => p.id);
+        const { data: allImages } = await supabase
+          .from('product_images')
+          .select('*')
+          .in('product_id', productIds)
+          .order('display_order');
+
+        // 상품별 이미지 매핑
+        const imagesByProduct = (allImages || []).reduce((acc: Record<string, any[]>, img: any) => {
+          if (!acc[img.product_id]) acc[img.product_id] = [];
+          acc[img.product_id].push(img);
+          return acc;
+        }, {});
+
+        const productsWithImages = allProducts.map(product => {
+          const images = imagesByProduct[product.id] || [];
+          return {
+            ...product,
+            product_images: images,
+            additional_images: images.map((img: any) => img.image_url)
+          };
+        });
 
         setProducts(productsWithImages);
         setFilteredProducts(productsWithImages);
