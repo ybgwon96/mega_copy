@@ -300,55 +300,50 @@ export default function ProductGridOptimized({ category, searchTerm = '' }: Prod
     prevSearchTermRef.current = searchTerm;
   }, [category, searchTerm]);
 
-  if (isLoading) {
-    return (
-      <div className="flex justify-center items-center py-20">
-        <LoadingSpinner />
-      </div>
-    );
-  }
-
-  if (!displayProducts || displayProducts.length === 0) {
-    return (
-      <div className="text-center py-20 px-4">
-        <p className="text-gray-500 font-bold">
-          {searchTerm ? '검색 결과가 없습니다.' : '해당 카테고리에 상품이 없습니다.'}
-        </p>
-      </div>
-    );
-  }
-
   return (
     <div className="container mx-auto px-4 py-6">
-      {/* 상품 그리드 - 3개씩 표시 */}
-      <div className="grid grid-cols-3 gap-2 md:gap-4">
-        {displayProducts.map((product) => (
-          <ProductCard key={product.id} product={product} />
-        ))}
-      </div>
+      {isLoading ? (
+        <div className="flex justify-center items-center py-20">
+          <LoadingSpinner />
+        </div>
+      ) : !displayProducts || displayProducts.length === 0 ? (
+        <div className="text-center py-20 px-4">
+          <p className="text-gray-500 font-bold">
+            {searchTerm ? '검색 결과가 없습니다.' : '해당 카테고리에 상품이 없습니다.'}
+          </p>
+        </div>
+      ) : (
+        <>
+          {/* 상품 그리드 - 3개씩 표시 */}
+          <div className="grid grid-cols-3 gap-2 md:gap-4">
+            {displayProducts.map((product) => (
+              <ProductCard key={product.id} product={product} />
+            ))}
+          </div>
 
-      {/* 무한 스크롤 트리거 */}
-      {hasMore && (
-        <div 
-          ref={observerTarget}
-          className="flex justify-center items-center py-8"
-        >
-          {isLoadingMore ? (
-            <div className="flex flex-col items-center gap-2">
-              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-mega-yellow"></div>
-              <span className="text-sm text-gray-500">상품 불러오는 중...</span>
+          {!hasMore && displayProducts.length > 0 && (
+            <div className="text-center py-8">
+              <p className="text-sm text-gray-500">모든 상품을 불러왔습니다.</p>
             </div>
-          ) : (
-            <div className="h-10" />
           )}
-        </div>
+        </>
       )}
 
-      {!hasMore && displayProducts.length > 0 && (
-        <div className="text-center py-8">
-          <p className="text-sm text-gray-500">모든 상품을 불러왔습니다.</p>
-        </div>
-      )}
+      {/* 무한 스크롤 트리거 - 항상 DOM에 유지하여 Observer 재연결 보장 */}
+      <div
+        ref={observerTarget}
+        className="flex justify-center items-center py-8"
+        style={{ display: hasMore && !isLoading ? 'flex' : 'none' }}
+      >
+        {isLoadingMore ? (
+          <div className="flex flex-col items-center gap-2">
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-mega-yellow"></div>
+            <span className="text-sm text-gray-500">상품 불러오는 중...</span>
+          </div>
+        ) : (
+          <div className="h-10" />
+        )}
+      </div>
     </div>
   );
 }
