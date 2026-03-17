@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import Link from 'next/link';
 import LoadingSpinner from './LoadingSpinner';
-import { productsAPI } from '../../lib/supabase-rpc-api';
+import { supabase } from '../../lib/supabase';
 import { useScrollToProduct } from '../hooks/useScrollToProduct';
 
 interface ProductImage {
@@ -82,6 +82,13 @@ export default function ProductGridOptimized({ category, searchTerm = '' }: Prod
   const [serverHasMore, setServerHasMore] = useState(true);
   const BATCH_SIZE = 100;
 
+  // 검색어 디바운스 (한글 IME 매 키 입력 대응, 서버 API 호출은 디바운스 적용)
+  const [debouncedSearch, setDebouncedSearch] = useState(searchTerm);
+  useEffect(() => {
+    const timer = setTimeout(() => setDebouncedSearch(searchTerm), 300);
+    return () => clearTimeout(timer);
+  }, [searchTerm]);
+
   // 페이지 상태 복원 - sessionStorage에서 저장된 값 읽기
   const getStorageKey = () => `product-grid-page:${category}:${searchTerm}`;
 
@@ -106,29 +113,61 @@ export default function ProductGridOptimized({ category, searchTerm = '' }: Prod
   const prevSearchTermRef = useRef(searchTerm);
   const isNavigatingBack = useRef(false);
 
-  // 상품 데이터 가져오기 (서버 페이지네이션)
+  // 상품 데이터 가져오기 (직접 Supabase 쿼리 + 서버 사이드 필터링)
   const fetchProducts = useCallback(async (offset = 0, append = false) => {
     try {
-      console.log(`[ProductGrid] Fetching products (offset: ${offset}, limit: ${BATCH_SIZE})...`);
-      const result = await productsAPI.getAll({ limit: BATCH_SIZE, offset });
+      const searchParam = debouncedSearch.trim();
+      const categoryParam = category !== '전체' ? category : '';
+      console.log(`[ProductGrid] Fetching products (offset: ${offset}, limit: ${BATCH_SIZE}, category: ${categoryParam || '전체'}, search: ${searchParam || ''})...`);
 
-      if (result.data) {
-        const newProducts = Array.isArray(result.data) ? result.data : [];
-        // 최신순 정렬
-        const sortedNew = newProducts.sort((a: Product, b: Product) => {
-          const dateA = new Date(a.created_at).getTime();
-          const dateB = new Date(b.created_at).getTime();
-          return dateB - dateA;
-        });
+      // 상품 조회
+      let query = supabase
+        .from('products')
+        .select('*')
+        .eq('is_active', true)
+        .order('created_at', { ascending: false })
+        .range(offset, offset + BATCH_SIZE - 1);
+
+      if (categoryParam) {
+        query = query.eq('category', categoryParam);
+      }
+
+      if (searchParam) {
+        query = query.or(`name.ilike.%${searchParam}%,description.ilike.%${searchParam}%,brand.ilike.%${searchParam}%`);
+      }
+
+      const { data, error } = await query;
+
+      if (error) throw error;
+
+      if (data && data.length > 0) {
+        // 이미지를 별도 쿼리로 일괄 조회 (PostgREST JOIN 실패 방지)
+        const productIds = data.map((p: any) => p.id);
+        const { data: allImages } = await supabase
+          .from('product_images')
+          .select('*')
+          .in('product_id', productIds)
+          .order('display_order');
+
+        const imagesByProduct = (allImages || []).reduce((acc: Record<string, ProductImage[]>, img: any) => {
+          if (!acc[img.product_id]) acc[img.product_id] = [];
+          acc[img.product_id].push(img);
+          return acc;
+        }, {});
+
+        const productsWithImages = data.map((p: any) => ({
+          ...p,
+          product_images: imagesByProduct[p.id] || [],
+        }));
 
         if (append) {
-          setProducts(prev => [...prev, ...sortedNew]);
+          setProducts(prev => [...prev, ...productsWithImages]);
         } else {
-          setProducts(sortedNew);
+          setProducts(productsWithImages);
         }
 
-        setServerHasMore(newProducts.length === BATCH_SIZE);
-        console.log(`[ProductGrid] Loaded ${newProducts.length} products (total offset: ${offset})`);
+        setServerHasMore(data.length === BATCH_SIZE);
+        console.log(`[ProductGrid] Loaded ${data.length} products (total offset: ${offset})`);
       } else {
         if (!append) setProducts([]);
         setServerHasMore(false);
@@ -140,41 +179,28 @@ export default function ProductGridOptimized({ category, searchTerm = '' }: Prod
     } finally {
       setIsLoading(false);
     }
-  }, []);
+  }, [category, debouncedSearch]);
 
-  // 초기 데이터 로드
+  // 초기 데이터 로드 + 카테고리/검색어 변경 시 리로드
   useEffect(() => {
-    fetchProducts();
+    setProducts([]);
+    setPage(1);
+    setServerHasMore(true);
+    setIsLoading(true);
+    fetchProducts(0, false);
   }, [fetchProducts]);
 
-  // 카테고리 및 검색어 필터링, 페이지네이션
+  // 페이지네이션 (서버 사이드 필터링으로 전환됨 - 클라이언트 필터링 불필요)
   useEffect(() => {
-    let filtered = category === '전체'
-      ? products
-      : products.filter(p => p.category === category);
-
-    // 검색어 필터링 (제목과 설명에서 검색)
-    if (searchTerm.trim()) {
-      const searchLower = searchTerm.toLowerCase();
-      filtered = filtered.filter(p =>
-        p.name.toLowerCase().includes(searchLower) ||
-        (p.description && p.description.toLowerCase().includes(searchLower))
-      );
-    }
-
-    const startIndex = 0;
     const endIndex = page * itemsPerPage;
-    const paginatedProducts = filtered.slice(startIndex, endIndex);
+    setDisplayProducts(products.slice(0, endIndex));
+    setHasMore(products.length > endIndex || serverHasMore);
 
-    setDisplayProducts(paginatedProducts);
-    setHasMore(filtered.length > endIndex);
-
-    // 초기 로드 시 페이지가 2 이상이면 모든 상품을 즉시 로드
     if (isInitialLoad.current && page > 1 && products.length > 0) {
       console.log('[ProductGrid] 초기 로드 - 저장된 페이지 상태 복원 중:', page);
       isInitialLoad.current = false;
     }
-  }, [products, category, searchTerm, page]);
+  }, [products, page, serverHasMore]);
 
   // 더 많은 아이템 로드 (클라이언트 페이지 증가 + 필요 시 서버에서 추가 fetch)
   const loadMore = useCallback(() => {
@@ -256,16 +282,13 @@ export default function ProductGridOptimized({ category, searchTerm = '' }: Prod
     return () => window.removeEventListener('popstate', handlePopState);
   }, [category, searchTerm]);
 
-  // 카테고리 또는 검색어 변경 시 페이지 리셋 (popstate가 아닌 경우만)
+  // 카테고리 또는 검색어 변경 시 sessionStorage 초기화 (페이지 리셋은 fetchProducts 의존성으로 자동 처리)
   useEffect(() => {
-    // 이전 값과 비교하여 실제로 변경되었는지 확인
     const categoryChanged = prevCategoryRef.current !== category;
     const searchTermChanged = prevSearchTermRef.current !== searchTerm;
 
     if ((categoryChanged || searchTermChanged) && !isNavigatingBack.current) {
-      console.log('[ProductGrid] 카테고리/검색어 변경 감지 - 페이지 리셋');
-      setPage(1);
-      // 카테고리나 검색어가 바뀌면 저장된 페이지도 초기화
+      console.log('[ProductGrid] 카테고리/검색어 변경 감지 - 세션 스토리지 초기화');
       if (typeof window !== 'undefined') {
         try {
           sessionStorage.removeItem(getStorageKey());
